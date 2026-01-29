@@ -7,7 +7,7 @@
 import React, { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
-import { SystemErrorBoundary } from './components/SystemGuard';
+import { SystemErrorBoundary, ApiKeyGuard } from './components/SystemGuard';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -18,7 +18,9 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <SystemErrorBoundary>
-      <App />
+      <ApiKeyGuard>
+        <App />
+      </ApiKeyGuard>
     </SystemErrorBoundary>
   </React.StrictMode>
 );

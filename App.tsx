@@ -34,6 +34,7 @@ import { Intro } from './components/Intro';
 import { NeuralCommandHub } from './components/NeuralCommandHub';
 import { BillingPage } from './components/pages/BillingPage';
 import { NetworkStatusGuard, ApiKeyGuard } from './components/SystemGuard';
+import { BiometricGate } from './components/BiometricGate';
 import { Cpu, RefreshCw, Activity, CheckCircle, AlertTriangle, X, Info } from 'lucide-react';
 
 const motion = framerMotion as any;
@@ -43,7 +44,7 @@ const ROUTE_PERMISSIONS: Record<AppState, UserRole[] | 'PUBLIC'> = {
     'DOCS': 'PUBLIC', 'SOLUTIONS': 'PUBLIC', 'ABOUT': 'PUBLIC', 'CONTACT': 'PUBLIC',
     'POLICY': 'PUBLIC', 'AUTH': 'PUBLIC', 'DEMO_SESSION': 'PUBLIC', 'DEPLOY_PAGE': 'PUBLIC',
     'STATUS': 'PUBLIC', 'FRONTEND_ARCH': 'PUBLIC', 'BACKEND_ARCH': 'PUBLIC',
-    'AI_ENGINE_ARCH': 'PUBLIC', 'SECURITY_ARCH': 'PUBLIC', 
+    'AI_ENGINE_ARCH': 'PUBLIC', 'SECURITY_ARCH': 'PUBLIC', 'BIOMETRIC_SCAN': 'PUBLIC',
     'DASHBOARD': ['CANDIDATE', 'RECRUITER', 'INTERVIEWER'],
     'ATS': ['RECRUITER', 'INTERVIEWER'], 
     'PROFILE': ['CANDIDATE', 'RECRUITER', 'INTERVIEWER'], 
@@ -66,14 +67,7 @@ export const App: React.FC = () => {
   const [isApiKeyInvalid, setIsApiKeyInvalid] = useState(false);
 
   useEffect(() => {
-    // Initial check for API Key presence with safety check
-    const apiKeyExists = typeof process !== 'undefined' && process.env && process.env.API_KEY;
-    if (!apiKeyExists) {
-        setIsApiKeyInvalid(true);
-    }
-
     APIService.initialize();
-    
     const handleSocketStatus = (status: SocketStatus) => setSocketStatus(status);
     socketService.on('socket_status_update', handleSocketStatus);
     
@@ -92,9 +86,7 @@ export const App: React.FC = () => {
   }, []);
 
   const addToast = (type: 'success' | 'error' | 'info', message: string, recoveryHint?: string) => {
-    if (message === 'API_KEY_INVALID') {
-        setIsApiKeyInvalid(true);
-    }
+    if (message === 'API_KEY_INVALID') setIsApiKeyInvalid(true);
     const id = Math.random().toString(36).substr(2, 9);
     setNotifications(prev => [...prev, { id, type, message, recoveryHint }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 10000);
@@ -149,28 +141,41 @@ export const App: React.FC = () => {
       }
   };
 
+  const handleBiometricLoginSuccess = () => {
+      const mockUser: User = {
+          id: 'user_bio_772',
+          name: 'Alex Rivera',
+          email: 'alex.rivera@neural-nexus.io',
+          role: 'CANDIDATE',
+          biometricEnabled: true,
+          avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alex'
+      };
+      setUser(mockUser);
+      setState('DASHBOARD');
+      addToast('success', 'BIOMETRIC_IDENTITY_CONFIRMED');
+  };
+
   const handleInterviewComplete = async (finalTranscript: string, context: { text: string, answer?: string }[]) => {
       setState('ANALYSIS');
       setLastInterviewContext(context);
       try {
-          const report = await APIService.generateFinalReport(finalTranscript, 'Senior Full Stack Engineer');
+          const report = await APIService.generateFinalReport(finalTranscript, 'Senior Full Stack Engineer', context);
           await APIService.saveReport(report);
           setCurrentReport(report);
           setState('REPORT');
-          addToast('success', 'ANALYSIS_SYNCHRONIZED', 'The neural report has been successfully generated.');
+          addToast('success', 'ANALYSIS_SYNCHRONIZED');
       } catch (e: any) {
           const err = e as AIKernelError;
-          addToast('error', err.message || 'ANALYSIS_FAILED', err.recoveryHint || 'Manual review required.');
-          if (err.message !== 'API_KEY_INVALID') {
-            setState('DASHBOARD');
-          }
+          addToast('error', err.message || 'ANALYSIS_FAILED', err.recoveryHint);
+          if (err.message !== 'API_KEY_INVALID') setState('DASHBOARD');
       }
   };
 
   const renderContent = () => {
     switch (state) {
         case 'LANDING': return <LandingPage onNavigate={navigateTo} />;
-        case 'AUTH': return <div className="pt-24 flex-1 flex flex-col justify-center"><Auth onLogin={handleLogin} /></div>;
+        case 'AUTH': return <Auth onLogin={handleLogin} onBiometricStart={() => setState('BIOMETRIC_SCAN')} />;
+        case 'BIOMETRIC_SCAN': return <BiometricGate onSuccess={handleBiometricLoginSuccess} onCancel={goBack} title="Uplink_Identity_Verification" />;
         case 'DASHBOARD': 
             if (user?.role === 'CANDIDATE') return <div className="pt-32 pb-12 px-6"><CandidateDashboard user={user!} onNavigate={navigateTo} onStartInterview={() => navigateTo('IDLE')}/></div>;
             return <div className="pt-32 pb-24 px-6"><RecruiterDashboard user={user!} onNavigate={navigateTo}/></div>;
@@ -186,33 +191,12 @@ export const App: React.FC = () => {
                 </button>
             </div>
         );
-        case 'VERIFICATION': return (
-            <div className="relative flex flex-col items-center pt-32 min-h-screen justify-center p-6">
-                <h2 className="text-xl font-mono text-evalion-teal mb-8 animate-pulse uppercase tracking-[0.2em] font-black">Biometric_Scan_Active</h2>
-                <div className="relative w-full max-w-[640px] aspect-[4/3] bg-black rounded-[2rem] overflow-hidden border-2 border-evalion-teal/30 shadow-[0_0_100px_rgba(0,240,255,0.1)]">
-                     <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-                        <div className="relative w-80 h-80">
-                            <motion.div className="absolute top-0 left-0 right-0 h-1 bg-evalion-teal shadow-[0_0_30px_#00F0FF]" animate={{ top: ['0%', '100%', '0%'] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} />
-                            <div className="absolute top-0 left-0 w-12 h-12 border-t-4 border-l-4 border-evalion-teal rounded-tl-2xl"></div>
-                            <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-evalion-teal rounded-tr-2xl"></div>
-                            <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-evalion-teal rounded-bl-2xl"></div>
-                            <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-evalion-teal rounded-br-2xl"></div>
-                        </div>
-                     </div>
-                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                        <Activity className="text-evalion-teal opacity-20 animate-pulse" size={120} />
-                        <button onClick={() => navigateTo('INTERVIEW')} className="z-30 px-8 py-3 bg-white text-black font-black font-mono text-[10px] rounded uppercase tracking-widest">Override_Manual_Verify</button>
-                     </div>
-                     <div className="absolute bottom-4 left-4 font-mono text-[10px] text-evalion-success bg-black/50 px-2 py-1 uppercase font-black">OS_KERNEL: V1.0_STABLE</div>
-                </div>
-            </div>
-        );
+        case 'VERIFICATION': return <BiometricGate onSuccess={() => setState('INTERVIEW')} onCancel={goBack} title="Pre-Interview_Sentinel_Check" />;
         case 'INTERVIEW': return <InterviewRoom user={user!} onComplete={handleInterviewComplete} onNavigate={navigateTo} />;
         case 'ANALYSIS': return (
             <div className="flex flex-col items-center justify-center h-screen pt-24">
                 <RefreshCw size={64} className="text-evalion-teal animate-spin mb-8" />
                 <h2 className="text-3xl font-black text-white tracking-[0.4em] animate-pulse uppercase font-mono">Synthesizing_Intelligence</h2>
-                <div className="mt-4 text-[10px] font-mono text-evalion-textDim uppercase tracking-[0.8em] opacity-40 font-black">CALIBRATING_NEURAL_SCORING_V4.2.0</div>
             </div>
         );
         case 'REPORT': return <div className="pt-32 pb-12 px-6">{currentReport && <FinalReportDashboard report={currentReport} />}</div>;
@@ -238,9 +222,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Render ApiKeyGuard if API key is invalid, takes precedence over intro and all other app content.
   if (isApiKeyInvalid) return <ApiKeyGuard />;
-  
   if (isIntroing) return <Intro onComplete={() => setIsIntroing(false)} />;
 
   return (
@@ -289,11 +271,6 @@ export const App: React.FC = () => {
                             <X size={16} />
                         </button>
                     </div>
-                    {n.recoveryHint && (
-                        <p className="text-[10px] font-mono text-evalion-textDim leading-relaxed uppercase pl-12 border-t border-white/5 pt-2 opacity-80 italic">
-                            RECOVERY_HINT: {n.recoveryHint}
-                        </p>
-                    )}
                 </motion.div>
             ))}
         </AnimatePresence>
